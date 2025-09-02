@@ -215,4 +215,14 @@ def smote_optuna_binary(split_date):
 
    preds = voting(split_data, lgbm_best_param_dict, xgb_best_param_dict, catb_best_param_dict, test_x)
    ```
-* 하이퍼파라미터 튜닝이 완료된 모델들을 통해 Voting 앙상블 기법을 적용하여 최적의 결과값 도출
+* 하이퍼파라미터 튜닝 모델을 결합하여 최적의 결과를 생성
+* 앙상블 방법:
+  - 이 완료된 모델들을 통해 Voting 앙상블 기법을 적용하여 최적의 결과값 도출
+
+* 세 가지 추천 점수(SVD, 코사인 유사도, 피어슨 상관계수)를 결합하여 최적의 추천을 생성
+추천 점수 앙상블 방법:
+각 방법에서 예측된 점수를 조합하여 가중 평균
+추천된 공고 중 가장 많이 등장한 상위 5개를 최종 추천
+검증, 성능 평가 - (Recall@5)
+
+recall@5 지표를 활용하여 추천된 채용 공고가 실제 검증 데이터(val)와 얼마나 일치하는지 평가
