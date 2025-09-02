@@ -7,200 +7,212 @@
 # 평가지표
 Macro F1-Score
 
-# QADataset 생성과정 : 		 		   
-1. Load           
-   ### 과제에 적합한 PDFReader 선택    
-   
-   PDF 문서 로딩을 위해 PyPdfReader를 사용하여 문서를 처리합니다. 이때, 불필요한 요소들이 포함된 문서도 존재하므로 이를 처리하는 과정이 중요    
-
-3. 문서 정리 및 클린징       
- 
-   PDF 문서에는 검색에 불필요한 사진, 특수 문자, 공백, 줄바꿈, 부록 등의 불필요한 요소들이 포함될 수 있음    
-
-4. Split        
-     
-   RecursiveCharacterTextSplitter를 사용하여 문서를 잘게 분할함.    
-   이 방법은 문서를 일정 길이로 자르고, 각 조각을 개별적으로 다룰 수 있게 해주며, 이후 모델 학습에 최적화된 텍스트를 제공함. 이를 통해 금융 및 금융 보 관련 문서들을 더 잘게 나누어 처리할 수 있음     
-
-5. QADataset셋 생성     
-     
-   생성된 chunk를 모두 합쳐 'skt/A.X-4.0-Light' 오픈 모델을 활용하여 QADataset을 생성      
-   
-# RAG를 위한 PDF 문서 전처리 과정:      
-1. Load           
-   ### 과제에 적합한 PDFReader 선택   
-
-   PDF 문서 로딩을 위해 PyPdfReader를 사용하여 문서를 처리합니다. 이때, 불필요한 요소들이 포함된 문서도 존재하므로 이를 처리하는 과정이 중요     
-
-2. 문서 정리 및 클린징       
- 
-   PDF 문서에는 검색에 불필요한 사진, 특수 문자, 공백, 줄바꿈, 부록 등의 불필요한 요소들이 포함될 수 있음      
-
-3. Split        
-     
-   RecursiveCharacterTextSplitter를 사용하여 문서를 잘게 분할함.     
-   이 방법은 문서를 일정 길이로 자르고, 각 조각을 개별적으로 다룰 수 있게 해주며, 이후 모델 학습에 최적화된 텍스트를 제공함. 이를 통해 금융 및 금융 보 관련 문서들을 더 잘게 나누어 처리할 수 있음      
-
-4. Embed    
-
-   텍스트 임베딩에는 SentenceTransformer("sentence-transformers/all-mpnet-base-v2") 모델을 사용   
-   이 모델은 빠르고 효율적으로 텍스트를 벡터 형태로 변환하여 의미 기반 검색에 적합한 표현을 제공함     
-   이 과정을 통해 각 문서가 의미적으로 잘 표현된 벡터로 변환되어, 검색 및 후속 처리에서 높은 성능을 발휘함.   
-
-5. Store      
-
-   문서를 하이브리드 검색 방식을 사용하기 위한 형식으로 저장       
-
-### BM25 색인 저장    
-
-   BM25 Retriever를 활용하여 키워드 기반 색인을 생성     
-   이를 통해 특정 키워드가 포함된 문서를 빠르게 검색할 수 있음      
-
-### FAISS 벡터 저장     
-
-   문서를 **SentenceTransformer("sentence-transformers/all-mpnet-base-v2")**를 사용하여 벡터로 변환     
-   변환된 벡터를 FAISS Retriever에 저장하여 의미적 유사성을 활용한 검색이 가능하도록 합니다. 임계치(Threshold) 기반 문서 필터링     
-      
-BM25 스코어 + FAISS 유사도 점수를 결합하여 특정 임계치(Threshold) 이상인 문서만 저장      
-이 과정을 통해 불필요한 문서를 걸러내고, 문제와 유의미한 문서만 보관      
-이러한 과정을 통해 문서가 검색 시스템에 최적화된 상태로 저장되며, 이후 금융 문제 해결 과정에서 신속하고 정확한 검색이 가능해짐.     
-
-# 추론    
-### LLM 파인튜닝     
-1. 모델 및 토크나이저 설정      
-```   
-model_name = 'LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct'     
-model = AutoModelForCausalLM.from_pretrained(    
-      model_name,    
-      device_map={"":0},    
-      trust_remote_code=True,    
-      )     
- 
-tokenizer = AutoTokenizer.from_pretrained(model_name)     
-```    
-
-2. LoRA 경량화
-   
-   LoRA (Low Rank Adaptation)는 파인튜닝을 위한 경량화 기법     
-   pre-trained 모델에 가중치를 고정하고, 각 계층에 훈련 가능한 랭크 분해 행렬을 주입하여 훈련 가능한 매개 변수의 수를 크게 줄일 수 있음.      
-   LoRA를 사용하면 기존 모델의 대규모 파라미터를 전부 재학습할 필요 없이, 소수의 추가 파라미터만을 학습하여 모델을 새로운 태스크에 적응시킬 수 있어, 전체 모델을 처음부터 다시 학습하는 것보다 훨씬 적은 계산 자원을 사용하여, 시간과 비용을 절
-   약 할 수 있음    
-
-3. Trainning    
-
-   경량화를 마친 모델에 QADataset을 학습    
-
-4. Model Load    
-
-   ```
-   adapter_path = "/content/drive/MyDrive/1데이콘/2025금융AIChallenge금융AI모델경쟁/dataset/finetunning_model8/checkpoint-1104"   
-   fine_model = PeftModelForCausalLM.from_pretrained(model, adapter_path)    
-   fine_model = fine_model.merge_and_unload().to("cuda")
-   ```
-
-  merge_and_unload을 통해 Model 로드 후 학습된 adapter을 결합 후 제거     
-
-### 추론     
-1. 하이브리드 검색기     
-``` 
-def hybrid_search(question: str, top_k: int, bm25_weight: int, faiss_weight: int):
-  # bm25 점수
-  tokenized_question = question.split()
-  bm25_scores = bm25_okapi.get_scores(tokenized_question)
-  bm25_scores_norm = bm25_scores / (np.max(bm25_scores) + 1e-8)
-
-  # faiss 점수
-  ques_embedding = faiss_embeddings.embed_query(question)
-  D, I = faiss_vectordb.index.search(np.array([ques_embedding]), len(all_chunks))
-  faiss_scores = np.zeros(len(all_chunks))
-  faiss_scores[I[0]] = (np.max(D[0]) - D[0]) / (np.max(D[0]) - np.min(D[0]) + 1e-8)
-
-  # 가중합
-  combined_scores = bm25_weight * bm25_scores_norm + faiss_weight * faiss_scores
-
-  # Top-K 문서 선택
-  top_indices = np.argsort(combined_scores)[::-1][:top_k]
-  top_docs = [all_chunks[i] for i in top_indices]
-
-  return top_docs, combined_scores
+# 데이터 전처리 : 		 		   
+1. 시간대 설정
 ```
-
-2. Prompt
-``` 
-def make_prompt_auto(text: str, top_docs: str) -> str:
-    """RAG 컨텍스트를 포함해 객관식/주관식 프롬프트를 자동 구성"""
-    if is_multiple_choice(text):
-        question, options = extract_question_and_choices(text)
-        prompt = (
-            "당신은 금융보안 전문가입니다.\n"
-            "아래 질문에 대해 적절한 **정답 선택지 번호만 출력**하세요. 다른 단어/설명 금지.\n\n"
-            "예: 1 / 2/ 3/ 4/ 5\n\n"
-            f"참고문서: {top_docs}\n\n"
-            f"질문: {question}\n"
-            "선택지:\n"
-            f"{'\n'.join(options)}\n\n"
-            "답변:"
-        )
-    else:
-        prompt = (
-            "당신은 금융보안 전문가입니다.\n"
-            "아래 주관식 질문에 대해 정확하고 간략한 설명을 작성하세요.\n\n"
-            "단, 참고 문서를 바탕으로 답을 구성하되 검색된 내용을 그대로 복사하지 말고 반드시 **재구성, 요약, 재작성**해서 답변해야 합니다.\n\n"
-            f"참고문서: {top_docs}\n\n"
-            f"질문: {text}\n\n"
-            "답변:"
-        )
-    return prompt
-```
-
-2. 대책 생성 함수 (generate_prevention_plan)
-```
-   def inference(question, fine_model, tokenizer, faiss_vectordb, bm25_okapi,
-              top_k: int, bm25_weight: int, faiss_weight: int):
-
-  top_docs = hybrid_search(question, top_k, bm25_weight, faiss_weight)
-  prompt = make_prompt_auto(question, top_docs)
-  inputs = tokenizer(prompt, return_tensors = 'pt').to('cuda')
-
-  # 객관식
-  if is_multiple_choice(question):
-    output_ids = fine_model.generate(
-        **inputs,
-        max_new_tokens=128,
-        do_sample=False,
+def sleep_lifelog(df):
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['sleep_date'] = np.where(
+        df['timestamp'].dt.hour < 7,
+        df['timestamp'].dt.date,
+        df['timestamp'].dt.date + pd.Timedelta(days=1)
     )
-  else:
-    output_ids = fine_model.generate(
-        **inputs,
-        max_new_tokens=256,
-        do_sample=True,
-        temperature=0.3,
-        top_p=0.9
-      )
+    df['lifelog_date'] = pd.to_datetime(df['sleep_date']) - pd.Timedelta(days=1)
 
-  output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-  pred_answer = extract_answer_only(output_text, original_question=q)
-
-  return pred_answer
+    return df
 ```
+* 하루가 넘어가도 전날의 수면상태이므로 다음날 07시까지는 전날 수면상태로 조정      
 
-3. 추론
-```
-preds = []
-
-for q in tqdm.tqdm(test['Question'], desc='Inference'):
-  answer = inference(q, fine_model, tokenizer, faiss_vectordb, bm25_okapi,
-              top_k=7, bm25_weight=0.1, faiss_weight=0.9)
-  preds.append(answer)
-```
-
-### 설명   
-> text: 금융 관련 질문, top_docs: 하이브리드 검색을 통해 검색된 관련 문서
-
-이를 기반으로 "금융 관련 질문: {text} \n 관련 문서: {top_docs}" 형식으로 구성 토큰화 및 모델 입력 준비
-
-### PEFT 모델을 활용한 문장 생성
-* bm25, faiss와 각각의 가중치를 설정하여 top_docs 문서 추출    
-* fine_model.generate(**inputs, max_length=256) 주관식 문제의 경우 최대 256자 길이로 답을 생성     
-* tokenizer.decode(output_ids[0], skip_special_tokens=True) 특수 토큰을 제거하고 최종 답안을 반환     
+2. 변수별 전처리
+   mean, max, min, std, cov는 기초통계량과 고유값, 다양성, 고유값 등을 각 변수마다의 특성을 고려하여 파생변수로 생성
+   각 변수마다 변수마다 고유값, 다양성, cov 값을 조합하여 불안전성이라는 공통적인 파생변수 생성
    
+3. 종속변수별 시간대 설정
+```
+def cut_time(hour):
+    if 22 <= hour or 0 <= hour < 6:
+        return 'S1_S2'
+def cut_time(hour):
+    if 22 <= hour or 0 <= hour < 1:
+        return 'S3'
+def cut_time(hour):
+    if 22 <= hour or 0 <= hour < 7:
+        return 'Q1'
+    elif 7 <= hour < 22:
+        return 'Q2_Q3'
+ ```
+* 종속변수마다 특성을 고려해 각각의 시간대를 설정    
+
+# 모델링 :    
+1. 독립변수 설정
+```
+feat = {
+    'Q1': 'Q1',
+    'Q2': 'Q2',
+    'Q3': 'Q2',
+    'S1': 'S1',
+    'S2': 'S1',
+    'S3': 'S3'
+}
+
+features = {k: x.columns[x.columns.str.startswith(v)] for k, v in feat.items()}
+``` 
+* 종속변수별에 따른 독립변수 설정     
+
+2. train_test_split
+```
+targets_binary = ['Q1', 'Q2', 'Q3', 'S2', 'S3']
+target_multi = ['S1']
+
+split_data = {}
+for col in targets_binary + target_multi:
+    y = train_df[col]
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=0.2, stratify=y, random_state=seed)
+    split_data[col] = (x_train, x_val, y_train, y_val)
+```
+
+3. 데이터 증강 + 하이퍼파라미터 튜닝
+```
+lgbm_best_param_dict = {}
+
+def smote_optuna_binary(split_date):
+  for col in targets_binary:
+    print(f'=== target: {col} ===')
+    x_train, x_val, y_train, y_val = split_data[col]
+
+
+    def objective_binary(trial):
+      params = {
+          'learning_rate': trial.suggest_float("lr", 1e-5, 1e-1, log=True),
+          'n_estimators': trial.suggest_int('n_estimators', 50, 500),
+          'max_depth': trial.suggest_int('max_depth', 2, 32),
+          'num_leaves': trial.suggest_int('num_leaves', 16, 64),
+          'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+          'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+          'reg_alpha': trial.suggest_float('reg_alpha', 1e-3, 10.0, log=True),
+          'reg_lambda': trial.suggest_float('reg_lambda', 1e-3, 10.0, log=True),
+          'path_smooth' : trial.suggest_loguniform('path_smooth', 1e-8, 1e-3),
+          'num_leaves' : trial.suggest_int('num_leaves', 30, 200),
+          'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 10, 100),
+          'max_bin' : trial.suggest_int('max_bin', 100, 255),
+          'feature_fraction' : trial.suggest_uniform('feature_fraction', 0.5, 0.9),
+          'bagging_fraction' : trial.suggest_uniform('bagging_fraction', 0.5, 0.9),
+          'random_state': seed,
+          'n_jobs': -1,
+          'verbosity': -1
+      }
+
+      feat = features[col]
+      clf_binary = LGBMClassifier(**params)
+      pipeline = imbalanced_make_pipeline(SMOTE(sampling_strategy='minority', random_state=seed), clf_binary)
+
+      cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+      score = cross_val_score(pipeline, x_train[feat], y_train, cv=cv, scoring='f1').mean()
+
+      trial.report(score, step=0)
+      if trial.should_prune():
+        raise optuna.exceptions.TrialPruned()
+
+      return score
+
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=seed))
+    study.optimize(objective_binary, n_trials=50)
+
+    best_params = study.best_params
+    best_score = study.best_value
+    lgbm_best_param_dict[col] = best_params
+    print(f"{col} 최적 파라미터: {best_params}")
+    print(f"{col} 최고 F1 점수: {best_score:.4f}")
+    print("=" * 50, "\n")
+```
+* LGBMClassifier, XGBoostClassifier, CatBoostClassifier 등 각각의 모델에 대한 최적의 파라미터 탐색     
+
+5. 앙상블
+   ```
+   def voting(split_data,
+           lgbm_best_param_dict, xgb_best_param_dict, catb_best_param_dict,
+           test_x):
+
+    preds = {}
+
+    # 이진 분류
+    for col_binary in targets_binary:
+        x_train, x_val, y_train, y_val = split_data[col_binary]
+        feat = features[col_binary]
+
+        lgbm = LGBMClassifier(**lgbm_best_param_dict[col_binary],
+                              random_state = seed,
+                              n_jobs = -1,
+                              verbosity = -1)
+        xgb = XGBClassifier(**xgb_best_param_dict[col_binary],
+                            random_state = seed,
+                            n_jobs = -1,
+                            verbosity = 0)
+        catb = CatBoostClassifier(**catb_best_param_dict[col_binary],
+                                  random_state = seed,
+                                  n_jobs=-1,
+                                  verbose=False)
+
+        smote = SMOTE(sampling_strategy='minority', random_state=seed)
+        x_train_over, y_train_over = smote.fit_resample(x_train[feat], y_train)
+
+        voting_binary = VotingClassifier(
+            estimators=[('lgbm', lgbm), ('xgb', xgb), ('catb', catb)],
+            voting='hard'
+        )
+
+        voting_binary.fit(x_train_over, y_train_over)
+        y_pred = voting_binary.predict(x_val[feat])
+
+        f1 = f1_score(y_val, y_pred)
+        train_acc = voting_binary.score(x_train[feat], y_train)
+        val_acc = voting_binary.score(x_val[feat], y_val)
+
+        print(f'Binary {col_binary} -> Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | Val F1: {f1:.4f}')
+        preds[col_binary] = voting_binary.predict(test_x[feat])
+
+    # 다중 분류
+    for col_multi in target_multi:
+        x_train, x_val, y_train, y_val = split_data[col_multi]
+        feat = features[col_multi]
+
+        model1 = LGBMClassifier(**lgbm_param[col_multi],
+                                random_sate = seed,
+                                n_jobs =-1,
+                                verbosity = -1,
+                                objective = 'multiclass',
+                                num_class = 3)
+        model2 = XGBClassifier(**xgb_param[col_multi],
+                               random_sate = seed,
+                               n_jobs =-1,
+                               verbosity = 0,
+                               objective = 'multiclass',
+                               num_class = 3)
+        model3 = CatBoostClassifier(**catb_param,
+                                    random_sate = seed, n_jobs = -1,
+                                    verbose = False,
+                                    loss_function = 'MultiClass')
+
+        smote = SMOTE(sampling_strategy='not majority', random_state=seed)
+        x_train_over, y_train_over = smote.fit_resample(x_train[feat], y_train)
+
+        voting_multi = VotingClassifier(
+            estimators=[('lgbm', model1), ('xgb', model2), ('catb', model3)],
+            voting='soft'
+        )
+
+        voting_multi.fit(x_train_over, y_train_over)
+        y_pred = voting_multi.predict(x_val[feat])
+
+        f1 = f1_score(y_val, y_pred, average='macro')
+        train_acc = voting_multi.score(x_train[feat], y_train)
+        val_acc = voting_multi.score(x_val[feat], y_val)
+
+        print(f'Multi {col_multi} -> Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | Val F1: {f1:.4f}')
+        preds[col_multi] = voting_multi.predict(test_x[feat])
+
+    return preds
+
+   preds = voting(split_data, lgbm_best_param_dict, xgb_best_param_dict, catb_best_param_dict, test_x)
+   ```
+* 하이퍼파라미터 튜닝이 완료된 모델들을 통해 Voting 앙상블 기법을 적용하여 최적의 결과값 도출
