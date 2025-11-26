@@ -7,6 +7,13 @@
 # 평가지표
 Macro F1-Score
 
+# 사용기술
+- Python
+- LightGBM/CatBoost/XGBoost
+- Optuna
+- SMOTE
+- Ensemble  
+    
 # 데이터 전처리 : 		 		   
 1. 시간대 설정
 ```
